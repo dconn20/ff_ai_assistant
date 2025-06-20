@@ -1,0 +1,10 @@
+credentials:
+  usernames:
+    user:
+      name: Demo User
+      email: user@example.com
+      password: '$2b$12$OllK2XyIm2G2mU7a6ybIYOzUYaK0GQ1K6TUKDvplTkxCF6CKaT3bi'
+cookie:
+  name: fpl_cookie
+  key: some_signature_key
+  expiry_days: 3
