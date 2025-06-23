@@ -120,10 +120,17 @@ from fpl_api import (
     get_all_players,
     fetch_data,
     fetch_fixtures,
-    calculate_smart_score
+    calculate_smart_score,
+    get_prediction
 )
 from captain_ai import recommend_captain_ai
 from formation_logic import get_best_xi_by_formation
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+from math import pi
+import seaborn as sns
+
 
 st.set_page_config(page_title="FPL AI Assistant", layout="wide")
 st.sidebar.success("Login bypassed – Welcome Developer!")
@@ -185,6 +192,63 @@ def format_player_detailed(p):
         f"🧠 Playing Chance: `{chance}%` | 📆 Fixtures: {emoji_difficulty or 'N/A'}"
     )
 
+def get_player_image_url(player):
+    code = player.get("photo", "").split(".")[0]
+    return f"https://resources.premierleague.com/premierleague/photos/players/110x140/p{code}.png"
+
+def plot_radar_chart(player1, player2, labels):
+    stats1 = [player1.get(l, 0) for l in labels]
+    stats2 = [player2.get(l, 0) for l in labels]
+
+    angles = [n / float(len(labels)) * 2 * pi for n in range(len(labels))]
+    stats1 += stats1[:1]
+    stats2 += stats2[:1]
+    angles += angles[:1]
+
+    fig, ax = plt.subplots(figsize=(6, 6), subplot_kw=dict(polar=True))
+    ax.set_theta_offset(pi / 2)
+    ax.set_theta_direction(-1)
+
+    plt.xticks(angles[:-1], labels)
+    ax.plot(angles, stats1, linewidth=0.1, linestyle='solid', label=player1['web_name'])
+    ax.fill(angles, stats1, alpha=0.1)
+
+    ax.plot(angles, stats2, linewidth=0.1, linestyle='solid', label=player2['web_name'])
+    ax.fill(angles, stats2, alpha=0.1)
+
+    plt.legend(loc='upper right', bbox_to_anchor=(0.1, 0.1))
+    st.pyplot(fig)
+
+# Define a utility function to prepare the comparison data
+def prepare_comparison_data(player1, player2):
+    stats = ['goals_scored', 'assists', 'minutes', 'total_points', 'smart_score']
+    data = {
+        'Stat': stats,
+        player1['web_name']: [player1.get(stat, 0) for stat in stats],
+        player2['web_name']: [player2.get(stat, 0) for stat in stats]
+    }
+    return pd.DataFrame(data)
+
+# Grouped Bar Chart Function
+def plot_grouped_bar_chart(df, player1_name, player2_name):
+    df_melted = df.melt(id_vars='Stat', var_name='Player', value_name='Value')
+    plt.figure(figsize=(10, 6))
+    sns.barplot(x='Stat', y='Value', hue='Player', data=df_melted)
+    plt.title('Player Stat Comparison')
+    plt.xticks(rotation=45)
+    st.pyplot(plt.gcf())
+    plt.clf()
+
+# Heatmap Function
+def plot_comparison_heatmap(df):
+    df_copy = df.copy()
+    df_copy.set_index('Stat', inplace=True)
+    plt.figure(figsize=(8, 4))
+    sns.heatmap(df_copy, annot=True, fmt=".1f", cmap="coolwarm")
+    plt.title('Stat Heatmap')
+    st.pyplot(plt.gcf())
+    plt.clf()
+
 
 tabs = st.tabs([
     "🏆 Top Picks",
@@ -245,15 +309,78 @@ with tabs[2]:
     else:
         st.warning("AI captain picks not available.")
 
+# with tabs[3]:
+#     st.header("Compare Players")
+#     team_names = sorted(set(p["team_name"] for p in player_pool))
+#     selected_team = st.selectbox("Select Team", team_names)
+#     team_players = [p for p in player_pool if p["team_name"] == selected_team]
+#     selected_player = st.selectbox("Select Player", [p["web_name"] for p in team_players])
+#     for p in team_players:
+#         if p["web_name"] == selected_player:
+#             st.markdown(f"**Selected Player Details:**\n{format_player(p)}\nFixtures: {p.get('fixture_info', 'N/A')}")
+
 with tabs[3]:
-    st.header("Compare Players")
+    st.header("📊 Compare Players")
+
     team_names = sorted(set(p["team_name"] for p in player_pool))
-    selected_team = st.selectbox("Select Team", team_names)
-    team_players = [p for p in player_pool if p["team_name"] == selected_team]
-    selected_player = st.selectbox("Select Player", [p["web_name"] for p in team_players])
-    for p in team_players:
-        if p["web_name"] == selected_player:
-            st.markdown(f"**Selected Player Details:**\n{format_player(p)}\nFixtures: {p.get('fixture_info', 'N/A')}")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        team1 = st.selectbox("Select Team 1", team_names, key="team1")
+        players1 = [p for p in player_pool if p["team_name"] == team1]
+        player1_name = st.selectbox("Select Player from Team 1", [p["web_name"] for p in players1], key="player1")
+
+    with col2:
+        team2 = st.selectbox("Select Team 2", team_names, index=1 if team_names[0] == team1 else 0, key="team2")
+        players2 = [p for p in player_pool if p["team_name"] == team2]
+        player2_name = st.selectbox("Select Player from Team 2", [p["web_name"] for p in players2], key="player2")
+
+    # Retrieve player data
+    player1 = next(p for p in players1 if p["web_name"] == player1_name)
+    player2 = next(p for p in players2 if p["web_name"] == player2_name)
+
+    st.markdown("## 🆚 Player Comparison")
+    col1, col2 = st.columns(2)
+
+    # with col1:
+    #     st.markdown("### 🔵 Player 1")
+    #     st.markdown(format_player_detailed(player1))
+
+    # with col2:
+    #     st.markdown("### 🔴 Player 2")
+    #     st.markdown(format_player_detailed(player2))
+
+    with col1:
+        st.markdown("### 🔵 Player 1")
+        st.image(get_player_image_url(player1), width=100)
+        st.markdown(format_player_detailed(player1))
+
+    with col2:
+        st.markdown("### 🔴 Player 2")
+        st.image(get_player_image_url(player2), width=100)
+        st.markdown(format_player_detailed(player2))
+
+    st.markdown(f"### 🔍 Comparing **{player1['web_name']}** vs **{player2['web_name']}**")
+
+    comp_df = prepare_comparison_data(player1, player2)
+
+    st.markdown("#### 📊 Grouped Bar Chart")
+    plot_grouped_bar_chart(comp_df, player1['web_name'], player2['web_name'])
+
+    st.markdown("#### 🌡️ Performance Heatmap")
+    plot_comparison_heatmap(comp_df)
+
+    # Side-by-side table
+    # metrics = ["total_points", "now_cost", "minutes", "goals_scored", "assists", "clean_sheets"]
+    # data = {
+    #     "Stats 24/25": metrics,
+    #     player1["web_name"]: [player1.get(m, 0) for m in metrics],
+    #     player2["web_name"]: [player2.get(m, 0) for m in metrics],
+    # }
+    # df = pd.DataFrame(data)
+    # st.table(df)
+
 
 with tabs[4]:
     st.header("Your Squad")
