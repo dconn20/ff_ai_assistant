@@ -154,7 +154,155 @@
 
 #     return sorted(managers, key=lambda x: x['smart_score'], reverse=True)[:3]
 
+# ========================================================================================
 
+# import requests
+# from collections import defaultdict
+
+# POSITION_MAP = {
+#     1: "Goalkeeper",
+#     2: "Defender",
+#     3: "Midfielder",
+#     4: "Forward"
+# }
+
+# FIXTURE_DIFFICULTY_MODIFIER = {
+#     1: 1.0,
+#     2: 0.5,
+#     3: 0.0,
+#     4: -0.5,
+#     5: -1.0
+# }
+
+# def fetch_data():
+#     url = "https://fantasy.premierleague.com/api/bootstrap-static/"
+#     return requests.get(url).json()
+
+# def fetch_fixtures():
+#     url = "https://fantasy.premierleague.com/api/fixtures/"
+#     return requests.get(url).json()
+
+# def get_all_players():
+#     data = fetch_data()
+#     teams = {team['id']: team['name'] for team in data['teams']}
+#     players = data['elements']
+#     for p in players:
+#         p['team_name'] = teams.get(p['team'], "Unknown")
+#     return players
+
+# def calculate_smart_score(p, fixtures, team_lookup):
+#     try:
+#         form = float(p.get('form', 0))
+#         cost = p['now_cost'] / 10
+#         total_points = p.get('total_points', 0)
+#         chance = p.get('chance_of_playing_next_round', 100)
+#         ppm = total_points / cost if cost > 0 else 0
+
+#         upcoming = get_upcoming_fixtures(p['team'], fixtures, team_lookup)
+#         difficulty_mod = sum(FIXTURE_DIFFICULTY_MODIFIER.get(d[1], 0.0) for d in upcoming)
+#         base_score = (form * 2.5) + (ppm * 1.5) + (chance / 100) - (cost * 0.4) + difficulty_mod
+#         return round(base_score, 2)
+#     except:
+#         return 0
+
+# def get_upcoming_fixtures(team_id, fixtures, team_lookup, limit=3):
+#     team_fixtures = []
+#     for f in fixtures:
+#         if not f['finished'] and (f['team_h'] == team_id or f['team_a'] == team_id):
+#             is_home = f['team_h'] == team_id
+#             opponent_id = f['team_a'] if is_home else f['team_h']
+#             opponent = team_lookup.get(opponent_id, "Unknown")
+#             difficulty = f['team_h_difficulty'] if is_home else f['team_a_difficulty']
+#             team_fixtures.append((opponent, difficulty))
+#             if len(team_fixtures) >= limit:
+#                 break
+#     return team_fixtures
+
+
+# def get_top_picks_by_position(position_label, top_n=3):
+#     position_code = [k for k, v in POSITION_MAP.items() if v.lower() == position_label.lower()]
+#     if not position_code:
+#         return []
+
+#     code = position_code[0]
+#     data = fetch_data()
+#     fixtures = fetch_fixtures()
+#     team_lookup = {t['id']: t['name'] for t in data['teams']}
+#     players = [p for p in data['elements'] if p['element_type'] == code]
+#     players = enrich_players(players, data['teams'])
+
+#     for p in players:
+#         p['smart_score'] = calculate_smart_score(p, fixtures, team_lookup)
+
+#     sorted_players = sorted(players, key=lambda x: x['smart_score'], reverse=True)
+#     return sorted_players[:top_n]
+
+# def get_captain_picks(top_n=3):
+#     data = fetch_data()
+#     fixtures = fetch_fixtures()
+#     team_lookup = {t['id']: t['name'] for t in data['teams']}
+#     players = [p for p in data['elements'] if p['element_type'] in [1, 2, 3, 4]]
+#     players = enrich_players(players, data['teams'])
+
+#     for p in players:
+#         p['smart_score'] = calculate_smart_score(p, fixtures, team_lookup)
+
+#     sorted_players = sorted(players, key=lambda x: x['smart_score'], reverse=True)
+#     return sorted_players[:top_n]
+
+# def get_top_raw_player_by_position(position_label, players=None):
+#     # Map readable name to element_type number
+#     position_code = None
+#     for k, v in POSITION_MAP.items():
+#         if isinstance(position_label, str) and v.lower().startswith(position_label.lower()):
+#             position_code = k
+#             break
+
+#     if position_code is None:
+#         return []
+
+#     if not players:
+#         players = get_all_players()
+
+#     top_players = [p for p in players if p['element_type'] == position_code]
+#     top_players = sorted(top_players, key=lambda x: x.get('total_points', 0), reverse=True)
+
+#     return top_players[:3]
+
+# def get_top_managers():
+#     # Since the official FPL API does not expose manager stats directly for clubs,
+#     # we simulate top-performing "club managers" using team total points as a proxy.
+#     # This function returns the top 3 teams with the highest aggregate points.
+
+#     data = fetch_data()
+#     elements = data["elements"]
+#     teams = data["teams"]
+
+#     # Calculate team total points
+#     team_points = defaultdict(int)
+#     for player in elements:
+#         team_points[player["team"]] += player.get("total_points", 0)
+
+#     top_teams = sorted(team_points.items(), key=lambda x: x[1], reverse=True)[:3]
+
+#     result = []
+#     for team_id, points in top_teams:
+#         team_info = next((t for t in teams if t["id"] == team_id), None)
+#         if team_info:
+#             result.append({
+#                 "manager_name": team_info["name"],  # Club name used as placeholder
+#                 "points": points
+#             })
+
+#     return result
+
+# def enrich_players(players, teams):
+#     team_lookup = {t['id']: t['name'] for t in teams}
+#     for p in players:
+#         p['team_name'] = team_lookup.get(p['team'], "Unknown")
+#     return players
+
+# ============================================================================================
 
 import requests
 from collections import defaultdict
@@ -182,28 +330,16 @@ def fetch_fixtures():
     url = "https://fantasy.premierleague.com/api/fixtures/"
     return requests.get(url).json()
 
-def get_all_players():
-    data = fetch_data()
-    teams = {team['id']: team['name'] for team in data['teams']}
-    players = data['elements']
+def enrich_players(players, teams):
+    team_lookup = {t['id']: t['name'] for t in teams}
     for p in players:
-        p['team_name'] = teams.get(p['team'], "Unknown")
+        p['team_name'] = team_lookup.get(p['team'], "Unknown")
     return players
 
-def calculate_smart_score(p, fixtures, team_lookup):
-    try:
-        form = float(p.get('form', 0))
-        cost = p['now_cost'] / 10
-        total_points = p.get('total_points', 0)
-        chance = p.get('chance_of_playing_next_round', 100)
-        ppm = total_points / cost if cost > 0 else 0
-
-        upcoming = get_upcoming_fixtures(p['team'], fixtures, team_lookup)
-        difficulty_mod = sum(FIXTURE_DIFFICULTY_MODIFIER.get(d[1], 0.0) for d in upcoming)
-        base_score = (form * 2.5) + (ppm * 1.5) + (chance / 100) - (cost * 0.4) + difficulty_mod
-        return round(base_score, 2)
-    except:
-        return 0
+def get_all_players():
+    data = fetch_data()
+    players = enrich_players(data['elements'], data['teams'])
+    return players
 
 def get_upcoming_fixtures(team_id, fixtures, team_lookup, limit=3):
     team_fixtures = []
@@ -218,8 +354,24 @@ def get_upcoming_fixtures(team_id, fixtures, team_lookup, limit=3):
                 break
     return team_fixtures
 
+def calculate_smart_score(p, fixtures, team_lookup):
+    try:
+        form = float(p.get('form', 0))
+        cost = p['now_cost'] / 10
+        total_points = p.get('total_points', 0)
+        chance = p.get('chance_of_playing_next_round', 100)
+        ppm = total_points / cost if cost > 0 else 0
 
-def get_top_picks_by_position(position_label, top_n=3):
+        upcoming = get_upcoming_fixtures(p['team'], fixtures, team_lookup)
+        difficulty_mod = sum(FIXTURE_DIFFICULTY_MODIFIER.get(d[1], 0.0) for d in upcoming)
+        p['fixture_info'] = ', '.join([f"vs {d[0]} (D{d[1]})" for d in upcoming]) or "N/A"
+
+        base_score = (form * 2.5) + (ppm * 1.5) + (chance / 100) - (cost * 0.4) + difficulty_mod
+        return round(base_score, 2)
+    except:
+        return 0
+
+def get_top_picks_by_position(position_label, top_n=5):
     position_code = [k for k, v in POSITION_MAP.items() if v.lower() == position_label.lower()]
     if not position_code:
         return []
@@ -234,71 +386,36 @@ def get_top_picks_by_position(position_label, top_n=3):
     for p in players:
         p['smart_score'] = calculate_smart_score(p, fixtures, team_lookup)
 
-    sorted_players = sorted(players, key=lambda x: x['smart_score'], reverse=True)
-    return sorted_players[:top_n]
+    return sorted(players, key=lambda x: x['smart_score'], reverse=True)[:top_n]
 
 def get_captain_picks(top_n=3):
     data = fetch_data()
     fixtures = fetch_fixtures()
     team_lookup = {t['id']: t['name'] for t in data['teams']}
-    players = [p for p in data['elements'] if p['element_type'] in [1, 2, 3, 4]]
+    players = [p for p in data['elements'] if p['element_type'] in POSITION_MAP]
     players = enrich_players(players, data['teams'])
 
     for p in players:
         p['smart_score'] = calculate_smart_score(p, fixtures, team_lookup)
 
-    sorted_players = sorted(players, key=lambda x: x['smart_score'], reverse=True)
-    return sorted_players[:top_n]
+    return sorted(players, key=lambda x: x['smart_score'], reverse=True)[:top_n]
 
 def get_top_raw_player_by_position(position_label, players=None):
-    # Map readable name to element_type number
-    position_code = None
-    for k, v in POSITION_MAP.items():
-        if isinstance(position_label, str) and v.lower().startswith(position_label.lower()):
-            position_code = k
-            break
-
-    if position_code is None:
+    code = [k for k, v in POSITION_MAP.items() if v.lower() == position_label.lower()]
+    if not code:
         return []
-
+    code = code[0]
     if not players:
         players = get_all_players()
-
-    top_players = [p for p in players if p['element_type'] == position_code]
-    top_players = sorted(top_players, key=lambda x: x.get('total_points', 0), reverse=True)
-
-    return top_players[:3]
+    top_players = [p for p in players if p['element_type'] == code]
+    return sorted(top_players, key=lambda x: x.get('total_points', 0), reverse=True)[:3]
 
 def get_top_managers():
-    # Since the official FPL API does not expose manager stats directly for clubs,
-    # we simulate top-performing "club managers" using team total points as a proxy.
-    # This function returns the top 3 teams with the highest aggregate points.
-
     data = fetch_data()
     elements = data["elements"]
     teams = data["teams"]
-
-    # Calculate team total points
     team_points = defaultdict(int)
     for player in elements:
         team_points[player["team"]] += player.get("total_points", 0)
-
     top_teams = sorted(team_points.items(), key=lambda x: x[1], reverse=True)[:3]
-
-    result = []
-    for team_id, points in top_teams:
-        team_info = next((t for t in teams if t["id"] == team_id), None)
-        if team_info:
-            result.append({
-                "manager_name": team_info["name"],  # Club name used as placeholder
-                "points": points
-            })
-
-    return result
-
-def enrich_players(players, teams):
-    team_lookup = {t['id']: t['name'] for t in teams}
-    for p in players:
-        p['team_name'] = team_lookup.get(p['team'], "Unknown")
-    return players
-
+    return [{"manager_name": next(t["name"] for t in teams if t["id"] == tid), "points": pts} for tid, pts in top_teams]
