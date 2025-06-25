@@ -5,13 +5,19 @@ import joblib
 import pandas as pd
 
 app = FastAPI()
-model = joblib.load('player_score_model.pkl')
+model = joblib.load('gw_score_model.pkl')
 
 class PlayerStats(BaseModel):
     minutes: int
     goals_scored: int
     assists: int
     clean_sheets: int
+    ict_index: float
+    influence: float
+    creativity: float
+    threat: float
+    form: float
+    fixture_difficulty: float
 
 @app.post("/predict")
 def predict_score(player: PlayerStats):

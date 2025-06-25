@@ -419,3 +419,18 @@ def get_top_managers():
         team_points[player["team"]] += player.get("total_points", 0)
     top_teams = sorted(team_points.items(), key=lambda x: x[1], reverse=True)[:3]
     return [{"manager_name": next(t["name"] for t in teams if t["id"] == tid), "points": pts} for tid, pts in top_teams]
+
+
+# AI
+# def get_prediction(player_stats):
+#     url = "http://localhost:8000/predict"
+#     response = requests.post(url, json=player_stats)
+#     return response.json().get("predicted_points")
+
+def get_prediction(player_stats):
+    url = "http://localhost:8000/predict"  # Ensure FastAPI server is running
+    response = requests.post(url, json=player_stats)
+    if response.status_code == 200:
+        return response.json().get("predicted_points")
+    else:
+        raise Exception(f"API Error {response.status_code}: {response.text}")

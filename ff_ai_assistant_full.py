@@ -146,6 +146,14 @@ for p in all_players:
 
 player_pool = [p for p in all_players if p.get("element_type") in [1, 2, 3, 4]]
 
+@st.cache_data
+def load_fpl_data():
+    df = pd.read_csv("fpl_gw_enriched.csv")  # Replace with actual CSV
+    df = df[df["minutes"] > 0]
+    return df
+
+fpl_df = load_fpl_data()
+
 # def format_player(p):
     # return f"**{p['web_name']}** ({p['team_name']}) – £{p['now_cost']/10}m – Score: `{p['smart_score']}`"
 
@@ -196,6 +204,13 @@ def get_player_image_url(player):
     code = player.get("photo", "").split(".")[0]
     return f"https://resources.premierleague.com/premierleague/photos/players/110x140/p{code}.png"
 
+def clean_player_input(raw_stats: dict) -> dict:
+    int_fields = {"minutes", "goals_scored", "assists", "clean_sheets"}
+    return {
+        k: int(round(v)) if k in int_fields else float(v)
+        for k, v in raw_stats.items()
+    }
+
 def plot_radar_chart(player1, player2, labels):
     stats1 = [player1.get(l, 0) for l in labels]
     stats2 = [player2.get(l, 0) for l in labels]
@@ -232,7 +247,7 @@ def prepare_comparison_data(player1, player2):
 # Grouped Bar Chart Function
 def plot_grouped_bar_chart(df, player1_name, player2_name):
     df_melted = df.melt(id_vars='Stat', var_name='Player', value_name='Value')
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(4, 2))
     sns.barplot(x='Stat', y='Value', hue='Player', data=df_melted)
     plt.title('Player Stat Comparison')
     plt.xticks(rotation=45)
@@ -243,7 +258,7 @@ def plot_grouped_bar_chart(df, player1_name, player2_name):
 def plot_comparison_heatmap(df):
     df_copy = df.copy()
     df_copy.set_index('Stat', inplace=True)
-    plt.figure(figsize=(8, 4))
+    plt.figure(figsize=(4, 2))
     sns.heatmap(df_copy, annot=True, fmt=".1f", cmap="coolwarm")
     plt.title('Stat Heatmap')
     st.pyplot(plt.gcf())
@@ -259,7 +274,8 @@ tabs = st.tabs([
     "🔁 Transfer Planner",
     "📈 Raw Leaders",
     "🧑‍💼 Top Managers",
-    "🧮 Recommended XI"
+    "🧮 Recommended XI",
+    "⚽ AI Score Predictor"
 ])
 
 with tabs[0]:
@@ -421,3 +437,74 @@ with tabs[8]:
         st.markdown("### Bench")
         for sub in subs:
             st.markdown(f"🧦 {format_player(sub)}")
+
+with tabs[9]:
+    st.set_page_config(page_title="FPL AI Score Predictor", layout="centered")
+    st.title("⚽ Fantasy Football AI Assistant")
+    st.subheader("🔮 Predict Next Gameweek Player Points")
+
+    # Load Data
+    fpl_df = load_fpl_data()
+
+    # Player Selection
+    player_name = st.selectbox("Choose a Player", fpl_df["web_name"].unique())
+    # player_row = fpl_df[fpl_df["web_name"] == player_name].iloc[0]
+
+    player_gw_rows = fpl_df[fpl_df["web_name"] == player_name].sort_values("gw", ascending=False).head(5)
+
+    # Show raw data if needed
+    # st.write(player_gw_rows)
+
+    player_row = {
+        "minutes": player_gw_rows["minutes"].mean(),
+        "goals_scored": player_gw_rows["goals_scored"].sum(),
+        "assists": player_gw_rows["assists"].sum(),
+        "clean_sheets": player_gw_rows["clean_sheets"].sum(),
+        "ict_index": player_gw_rows["ict_index"].mean(),
+        "influence": player_gw_rows["influence"].mean(),
+        "creativity": player_gw_rows["creativity"].mean(),
+        "threat": player_gw_rows["threat"].mean(),
+        "form": player_gw_rows["form"].mean(),
+        "fixture_difficulty": player_gw_rows["fixture_difficulty"].mean()
+    }
+
+
+    # Show Player Info
+    st.markdown(f"**Selected Player:** {player_name}")
+    st.markdown(f"**Minutes Played:** {player_row['minutes']}")
+    st.markdown(f"**Goals Scored:** {player_row['goals_scored']}")
+    st.markdown(f"**Assists:** {player_row['assists']}")
+    st.markdown(f"**Clean Sheets:** {player_row['clean_sheets']}")
+
+    # Prepare Stats for Prediction
+    player_stats = {
+        "minutes": int(player_row["minutes"]),
+        "goals_scored": int(player_row["goals_scored"]),
+        "assists": int(player_row["assists"]),
+        "clean_sheets": int(player_row["clean_sheets"]),
+        "ict_index": float(player_row["ict_index"]),
+        "influence": float(player_row["influence"]),
+        "creativity": float(player_row["creativity"]),
+        "threat": float(player_row["threat"]),
+        "form": float(player_row["form"]),
+        "fixture_difficulty": float(player_row["fixture_difficulty"]),
+    }
+
+    # Prediction Button
+    if st.button("Predict Points"):
+        try:
+            # predicted_score = get_prediction(player_row)
+            # Ensure all values are Python-native types
+            # player_input = {k: float(v) if isinstance(v, (np.float64, np.int64)) else int(v) for k, v in player_row.items()}
+            player_input = clean_player_input(player_row)
+            predicted_score = get_prediction(player_input)
+            st.success(f"Predicted Points for **{player_name}**: {predicted_score:.2f}")
+        except Exception as e:
+            st.error(f"Prediction failed: {e}")
+
+    # if st.button("Predict Points"):
+    #     try:
+    #         predicted_score = get_prediction(player_stats)
+    #         st.success(f"Predicted Points for **{player_name}**: {predicted_score}")
+    #     except Exception as e:
+    #         st.error(f"Prediction failed: {e}")
