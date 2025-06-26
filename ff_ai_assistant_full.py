@@ -1,115 +1,3 @@
-# import streamlit as st
-# from fpl_api import (
-#     get_top_picks_by_position,
-#     get_captain_picks,
-#     get_top_raw_player_by_position,
-#     get_top_managers,
-#     get_all_players,
-#     POSITION_MAP
-# )
-# from captain_ai import recommend_captain_ai
-# from formation_logic import get_best_xi_by_formation
-
-# st.set_page_config(page_title="FPL AI Assistant", layout="wide")
-# st.sidebar.success("Login bypassed – Welcome Developer!")
-
-# # Load all player data
-# all_players = get_all_players()
-# player_pool = [p for p in all_players if p.get("element_type") in [1, 2, 3, 4]]
-
-# def format_player(p):
-#     return f"**{p['web_name']}** ({p['team_name']}) – £{p['now_cost']/10}m – Score: `{p.get('smart_score', 0)}`"
-
-# # Tab layout
-# tabs = st.tabs([
-#     "🏆 Top Picks",
-#     "⭐ Captain Picks",
-#     "🤖 AI Captain",
-#     "📊 Compare Players",
-#     "🧠 Your Squad",
-#     "🔁 Transfer Planner",
-#     "📈 Raw Leaders",
-#     "🧑‍💼 Top Managers",
-#     "🧮 Recommended XI"
-# ])
-
-# with tabs[0]:
-#     st.header("Top 3 Picks per Position")
-#     for pos in ["Goalkeeper", "Defender", "Midfielder", "Forward"]:
-#         st.subheader(pos)
-#         for p in get_top_picks_by_position(pos):
-#             st.markdown(format_player(p))
-
-# with tabs[1]:
-#     st.header("Captain Picks")
-#     picks = get_captain_picks()
-#     if picks:
-#         for p in picks:
-#             st.markdown(f"{format_player(p)}\nFixtures: {p.get('fixture_info', 'N/A')}")
-#     else:
-#         st.warning("No captain picks available.")
-
-# with tabs[2]:
-#     st.header("AI-Recommended Captains")
-#     picks = recommend_captain_ai(all_players)
-#     if picks:
-#         for p in picks:
-#             st.markdown(f"{format_player(p)}\nFixtures: {p.get('fixture_info', 'N/A')}")
-#     else:
-#         st.warning("AI captain picks not available.")
-
-# with tabs[3]:
-#     st.header("Compare Players")
-#     team_names = sorted(set(p["team_name"] for p in player_pool))
-#     selected_team = st.selectbox("Select Team", team_names)
-#     team_players = [p for p in player_pool if p["team_name"] == selected_team]
-#     selected_player = st.selectbox("Select Player", [p["web_name"] for p in team_players])
-#     for p in team_players:
-#         if p["web_name"] == selected_player:
-#             st.markdown(f"**Selected Player Details:**\n{format_player(p)}\nFixtures: {p.get('fixture_info', 'N/A')}")
-
-# with tabs[4]:
-#     st.header("Your Squad")
-#     st.info("Login-based team import and visual formation coming soon.")
-
-# with tabs[5]:
-#     st.header("Transfer Planner")
-#     st.info("Will suggest optimal transfers based on user team.")
-
-# with tabs[6]:
-#     st.header("Raw Top Scorers by Position")
-#     for pos_id, label in zip([1, 2, 3, 4], ["Goalkeepers", "Defenders", "Midfielders", "Forwards"]):
-#         st.subheader(label)
-#         pos_label = POSITION_MAP[pos_id]
-#         top_raw = get_top_raw_player_by_position(pos_label, all_players)
-#         for p in top_raw[:3]:
-#             st.markdown(format_player(p))
-
-# with tabs[7]:
-#     st.header("Top Managers")
-#     managers = get_top_managers()
-#     sorted_mgrs = sorted(managers, key=lambda m: m.get("points", 0), reverse=True)
-#     for m in sorted_mgrs:
-#         st.markdown(f"🏅 **{m['manager_name']}** – Total Points: `{m['points']}`")
-
-# with tabs[8]:
-#     st.header("Recommended XI (with Subs)")
-#     budget = 1000
-#     xi, formation, subs = get_best_xi_by_formation(player_pool, budget)
-
-#     if not xi:
-#         st.error("No valid squad found within the budget.")
-#     else:
-#         st.subheader(f"Formation: {formation}")
-#         for label, type_id in zip(["Goalkeeper", "Defenders", "Midfielders", "Forwards"], [1, 2, 3, 4]):
-#             st.markdown(f"### {label}")
-#             for p in [pl for pl in xi if pl['element_type'] == type_id]:
-#                 st.markdown(format_player(p))
-
-#         st.markdown("### Bench")
-#         for sub in subs:
-#             st.markdown(f"🧦 {format_player(sub)}")
-
 
 import streamlit as st
 from fpl_api import (
@@ -130,6 +18,11 @@ import pandas as pd
 import numpy as np
 from math import pi
 import seaborn as sns
+import difflib
+import joblib
+
+
+model = joblib.load("gw_score_model.pkl")
 
 
 st.set_page_config(page_title="FPL AI Assistant", layout="wide")
@@ -210,6 +103,11 @@ def clean_player_input(raw_stats: dict) -> dict:
         k: int(round(v)) if k in int_fields else float(v)
         for k, v in raw_stats.items()
     }
+
+def find_matching_players(df, name_fragment):
+    """Return rows where web_name contains the fragment (case-insensitive)."""
+    return df[df["web_name"].str.contains(name_fragment, case=False, regex=True)]
+
 
 def plot_radar_chart(player1, player2, labels):
     stats1 = [player1.get(l, 0) for l in labels]
@@ -438,73 +336,73 @@ with tabs[8]:
         for sub in subs:
             st.markdown(f"🧦 {format_player(sub)}")
 
-with tabs[9]:
+with tabs[9]:  # Player Points Predictor
     st.set_page_config(page_title="FPL AI Score Predictor", layout="centered")
     st.title("⚽ Fantasy Football AI Assistant")
     st.subheader("🔮 Predict Next Gameweek Player Points")
 
-    # Load Data
-    fpl_df = load_fpl_data()
+    # Load data
+    df_2024_25 = pd.read_csv("fpl_gw_2024_25_enriched.csv")
+    positions_df = pd.read_csv("fpl_player_positions.csv")
+    df_2024_25 = df_2024_25.merge(positions_df, on="player_id", how="left")
 
-    # Player Selection
-    player_name = st.selectbox("Choose a Player", fpl_df["web_name"].unique())
-    # player_row = fpl_df[fpl_df["web_name"] == player_name].iloc[0]
+    # 🟢 Team Selection
+    teams = sorted(df_2024_25["team"].dropna().unique())
+    selected_team = st.selectbox("Select a team:", teams)
 
-    player_gw_rows = fpl_df[fpl_df["web_name"] == player_name].sort_values("gw", ascending=False).head(5)
+    # Filter data to selected team
+    team_filtered_df = df_2024_25[df_2024_25["team"] == selected_team]
 
-    # Show raw data if needed
-    # st.write(player_gw_rows)
+    # 🟡 Position Selection (optional)
+    positions = sorted(team_filtered_df["position"].dropna().unique())
+    selected_position = st.selectbox("Filter by position (optional):", ["All"] + positions)
 
-    player_row = {
-        "minutes": player_gw_rows["minutes"].mean(),
-        "goals_scored": player_gw_rows["goals_scored"].sum(),
-        "assists": player_gw_rows["assists"].sum(),
-        "clean_sheets": player_gw_rows["clean_sheets"].sum(),
-        "ict_index": player_gw_rows["ict_index"].mean(),
-        "influence": player_gw_rows["influence"].mean(),
-        "creativity": player_gw_rows["creativity"].mean(),
-        "threat": player_gw_rows["threat"].mean(),
-        "form": player_gw_rows["form"].mean(),
-        "fixture_difficulty": player_gw_rows["fixture_difficulty"].mean()
-    }
+    if selected_position != "All":
+        filtered_df = team_filtered_df[team_filtered_df["position"] == selected_position]
+    else:
+        filtered_df = team_filtered_df
 
+    # 🔵 Player Selection (final)
+    player_names = sorted(filtered_df["web_name"].unique())
+    selected_player = st.selectbox("Choose a player:", player_names)
 
-    # Show Player Info
-    st.markdown(f"**Selected Player:** {player_name}")
-    st.markdown(f"**Minutes Played:** {player_row['minutes']}")
-    st.markdown(f"**Goals Scored:** {player_row['goals_scored']}")
-    st.markdown(f"**Assists:** {player_row['assists']}")
-    st.markdown(f"**Clean Sheets:** {player_row['clean_sheets']}")
+    # Get latest record for selected player
+    player_matches = filtered_df[filtered_df["web_name"] == selected_player]
 
-    # Prepare Stats for Prediction
-    player_stats = {
-        "minutes": int(player_row["minutes"]),
-        "goals_scored": int(player_row["goals_scored"]),
-        "assists": int(player_row["assists"]),
-        "clean_sheets": int(player_row["clean_sheets"]),
-        "ict_index": float(player_row["ict_index"]),
-        "influence": float(player_row["influence"]),
-        "creativity": float(player_row["creativity"]),
-        "threat": float(player_row["threat"]),
-        "form": float(player_row["form"]),
-        "fixture_difficulty": float(player_row["fixture_difficulty"]),
-    }
+    if not player_matches.empty:
+        player_row = player_matches.iloc[-1]  # Latest GW
 
-    # Prediction Button
-    if st.button("Predict Points"):
-        try:
-            # predicted_score = get_prediction(player_row)
-            # Ensure all values are Python-native types
-            # player_input = {k: float(v) if isinstance(v, (np.float64, np.int64)) else int(v) for k, v in player_row.items()}
-            player_input = clean_player_input(player_row)
-            predicted_score = get_prediction(player_input)
-            st.success(f"Predicted Points for **{player_name}**: {predicted_score:.2f}")
-        except Exception as e:
-            st.error(f"Prediction failed: {e}")
+        # Display features
+        stats_df = pd.DataFrame({
+            "Feature": player_row[[
+                "gw", "minutes", "goals_scored", "assists", "clean_sheets",
+                "ict_index", "influence", "creativity", "threat",
+                "fixture_difficulty", "form", "total_points"
+            ]].index,
+            "Value": player_row[[
+                "gw", "minutes", "goals_scored", "assists", "clean_sheets",
+                "ict_index", "influence", "creativity", "threat",
+                "fixture_difficulty", "form", "total_points"
+            ]].values
+        })
+        st.dataframe(stats_df)
 
-    # if st.button("Predict Points"):
-    #     try:
-    #         predicted_score = get_prediction(player_stats)
-    #         st.success(f"Predicted Points for **{player_name}**: {predicted_score}")
-    #     except Exception as e:
-    #         st.error(f"Prediction failed: {e}")
+        # Prediction button
+        if st.button("Predict Points"):
+            try:
+                player_input = {
+                    k: float(v) if isinstance(v, (float, int)) else v
+                    for k, v in player_row.to_dict().items()
+                    if k in [
+                        "minutes", "goals_scored", "assists", "clean_sheets",
+                        "ict_index", "influence", "creativity", "threat",
+                        "form", "fixture_difficulty"
+                    ]
+                }
+                predicted_score = get_prediction(player_input)
+                st.success(f"Predicted Points for **{selected_player}**: {predicted_score:.2f}")
+            except Exception as e:
+                st.error(f"Prediction failed: {e}")
+    else:
+        st.warning("No data found for this player.")
+

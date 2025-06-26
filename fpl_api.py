@@ -306,6 +306,8 @@
 
 import requests
 from collections import defaultdict
+import pandas as pd
+import numpy as np
 
 POSITION_MAP = {
     1: "Goalkeeper",
@@ -427,10 +429,28 @@ def get_top_managers():
 #     response = requests.post(url, json=player_stats)
 #     return response.json().get("predicted_points")
 
-def get_prediction(player_stats):
-    url = "http://localhost:8000/predict"  # Ensure FastAPI server is running
-    response = requests.post(url, json=player_stats)
-    if response.status_code == 200:
-        return response.json().get("predicted_points")
-    else:
-        raise Exception(f"API Error {response.status_code}: {response.text}")
+# def get_prediction(player_stats):
+#     url = "http://localhost:8000/predict"  # Ensure FastAPI server is running
+#     response = requests.post(url, json=player_stats)
+#     if response.status_code == 200:
+#         return response.json().get("predicted_points")
+#     else:
+#         raise Exception(f"API Error {response.status_code}: {response.text}")
+
+def get_prediction(player_features: dict) -> float:
+
+    # Ensure required features are present
+    expected_features = [
+        "minutes", "goals_scored", "assists", "clean_sheets",
+        "ict_index", "influence", "creativity", "threat",
+        "form", "fixture_difficulty", "opponent_strength", "team_form",
+        "price", "transfers_in_gw", "transfers_out_gw",
+        "yellow_cards", "red_cards", "bonus"
+    ]
+
+    # Fill missing with 0s if any
+    input_data = {f: player_features.get(f, 0) for f in expected_features}
+
+    df = pd.DataFrame([input_data])
+    prediction = model.predict(df)[0]
+    return prediction
