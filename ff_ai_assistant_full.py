@@ -20,6 +20,8 @@ from math import pi
 import seaborn as sns
 import difflib
 import joblib
+import requests
+
 
 
 model = joblib.load("gw_score_model.pkl")
@@ -181,6 +183,7 @@ with tabs[0]:
     for pos in ["Goalkeeper", "Defender", "Midfielder", "Forward"]:
         st.subheader(pos)
         top_players = get_top_picks_by_position(pos, top_n=5)
+        # st.write(f"Top players for {pos}: {len(top_players)}")
         # for p in top_players:
         #     # st.markdown(format_player(p))
         #     st.markdown(f"{format_player(p)}\nFixtures: {p.get('fixture_info', 'N/A')}")
@@ -337,12 +340,39 @@ with tabs[8]:
             st.markdown(f"🧦 {format_player(sub)}")
 
 with tabs[9]:  # Player Points Predictor
+
     st.set_page_config(page_title="FPL AI Score Predictor", layout="centered")
     st.title("⚽ Fantasy Football AI Assistant")
     st.subheader("🔮 Predict Next Gameweek Player Points")
 
-    # Load data
+    # 📦 Load local enriched player data
     df_2024_25 = pd.read_csv("fpl_gw_2024_25_enriched.csv")
+
+    # Add clean readable names
+    df_2024_25["clean_name"] = df_2024_25["web_name"].apply(
+        lambda x: " ".join(x.split("_")[:-1]).replace("-", " ") if isinstance(x, str) else x
+    )
+
+
+    # 🔁 Patch team names using live FPL API
+    try:
+        bootstrap = requests.get("https://fantasy.premierleague.com/api/bootstrap-static/").json()
+
+        # Create mappings
+        player_to_team_id = {player["id"]: player["team"] for player in bootstrap["elements"]}
+        team_id_to_name = {team["id"]: team["name"] for team in bootstrap["teams"]}
+
+        # Map team IDs to names
+        df_2024_25["team_id"] = df_2024_25["player_id"].map(player_to_team_id)
+        df_2024_25["team"] = df_2024_25["team_id"].map(team_id_to_name)
+
+        # Clean up
+        df_2024_25.drop(columns=["team_id"], inplace=True)
+
+    except Exception as e:
+        st.error(f"⚠️ Failed to fetch team names from FPL API: {e}")
+
+
     positions_df = pd.read_csv("fpl_player_positions.csv")
     df_2024_25 = df_2024_25.merge(positions_df, on="player_id", how="left")
 
@@ -350,7 +380,7 @@ with tabs[9]:  # Player Points Predictor
     teams = sorted(df_2024_25["team"].dropna().unique())
     selected_team = st.selectbox("Select a team:", teams)
 
-    # Filter data to selected team
+    # 🔽 Filter to selected team
     team_filtered_df = df_2024_25[df_2024_25["team"] == selected_team]
 
     # 🟡 Position Selection (optional)
@@ -362,19 +392,18 @@ with tabs[9]:  # Player Points Predictor
     else:
         filtered_df = team_filtered_df
 
-    # 🔵 Player Selection (final)
-    player_names = sorted(filtered_df["web_name"].unique())
+    # 🔵 Player Selection
+    player_names = sorted(filtered_df["clean_name"].unique())
     selected_player = st.selectbox("Choose a player:", player_names)
 
-    # Get latest record for selected player
-    player_matches = filtered_df[filtered_df["web_name"] == selected_player]
-
+    # ✨ Display and predict
+    player_matches = filtered_df[filtered_df["clean_name"] == selected_player]
     if not player_matches.empty:
-        player_row = player_matches.iloc[-1]  # Latest GW
+        player_row = player_matches.iloc[-1]
 
-        # Display features
+        # Display stats
         stats_df = pd.DataFrame({
-            "Feature": player_row[[
+            "Feature": player_row[[ 
                 "gw", "minutes", "goals_scored", "assists", "clean_sheets",
                 "ict_index", "influence", "creativity", "threat",
                 "fixture_difficulty", "form", "total_points"
@@ -387,7 +416,6 @@ with tabs[9]:  # Player Points Predictor
         })
         st.dataframe(stats_df)
 
-        # Prediction button
         if st.button("Predict Points"):
             try:
                 player_input = {
@@ -396,7 +424,9 @@ with tabs[9]:  # Player Points Predictor
                     if k in [
                         "minutes", "goals_scored", "assists", "clean_sheets",
                         "ict_index", "influence", "creativity", "threat",
-                        "form", "fixture_difficulty"
+                        "form", "fixture_difficulty", "opponent_strength",
+                        "team_form", "price", "transfers_in_gw", "transfers_out_gw",
+                        "yellow_cards", "red_cards", "bonus"
                     ]
                 }
                 predicted_score = get_prediction(player_input)
@@ -405,4 +435,75 @@ with tabs[9]:  # Player Points Predictor
                 st.error(f"Prediction failed: {e}")
     else:
         st.warning("No data found for this player.")
+
+
+# with tabs[9]:  # Player Points Predictor
+#     st.set_page_config(page_title="FPL AI Score Predictor", layout="centered")
+#     st.title("⚽ Fantasy Football AI Assistant")
+#     st.subheader("🔮 Predict Next Gameweek Player Points")
+
+#     # Load data
+#     df_2024_25 = pd.read_csv("fpl_gw_2024_25_enriched.csv")
+#     positions_df = pd.read_csv("fpl_player_positions.csv")
+#     df_2024_25 = df_2024_25.merge(positions_df, on="player_id", how="left")
+
+#     # 🟢 Team Selection
+#     teams = sorted(df_2024_25["team"].dropna().unique())
+#     selected_team = st.selectbox("Select a team:", teams)
+
+#     # Filter data to selected team
+#     team_filtered_df = df_2024_25[df_2024_25["team"] == selected_team]
+
+#     # 🟡 Position Selection (optional)
+#     positions = sorted(team_filtered_df["position"].dropna().unique())
+#     selected_position = st.selectbox("Filter by position (optional):", ["All"] + positions)
+
+#     if selected_position != "All":
+#         filtered_df = team_filtered_df[team_filtered_df["position"] == selected_position]
+#     else:
+#         filtered_df = team_filtered_df
+
+#     # 🔵 Player Selection (final)
+#     player_names = sorted(filtered_df["web_name"].unique())
+#     selected_player = st.selectbox("Choose a player:", player_names)
+
+#     # Get latest record for selected player
+#     player_matches = filtered_df[filtered_df["web_name"] == selected_player]
+
+#     if not player_matches.empty:
+#         player_row = player_matches.iloc[-1]  # Latest GW
+
+#         # Display features
+#         stats_df = pd.DataFrame({
+#             "Feature": player_row[[
+#                 "gw", "minutes", "goals_scored", "assists", "clean_sheets",
+#                 "ict_index", "influence", "creativity", "threat",
+#                 "fixture_difficulty", "form", "total_points"
+#             ]].index,
+#             "Value": player_row[[
+#                 "gw", "minutes", "goals_scored", "assists", "clean_sheets",
+#                 "ict_index", "influence", "creativity", "threat",
+#                 "fixture_difficulty", "form", "total_points"
+#             ]].values
+#         })
+#         st.dataframe(stats_df)
+
+#         # Prediction button
+#         if st.button("Predict Points"):
+#             try:
+#                 player_input = {
+#                     k: float(v) if isinstance(v, (float, int)) else v
+#                     for k, v in player_row.to_dict().items()
+#                     if k in [
+#                         "minutes", "goals_scored", "assists", "clean_sheets",
+#                         "ict_index", "influence", "creativity", "threat",
+#                         "form", "fixture_difficulty"
+#                     ]
+#                 }
+#                 predicted_score = get_prediction(player_input)
+#                 st.success(f"Predicted Points for **{selected_player}**: {predicted_score:.2f}")
+#             except Exception as e:
+#                 st.error(f"Prediction failed: {e}")
+#     else:
+#         st.warning("No data found for this player.")
 
