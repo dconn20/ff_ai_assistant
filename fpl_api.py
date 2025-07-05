@@ -89,6 +89,111 @@ def calculate_smart_score(p, fixtures, team_lookup):
 #     return sorted(players, key=lambda x: x['smart_score'], reverse=True)[:top_n]
 
 
+# def get_top_picks_by_position(position_label, top_n=5):
+#     position_code = [k for k, v in POSITION_MAP.items() if v.lower() == position_label.lower()]
+#     if not position_code:
+#         return []
+
+#     code = position_code[0]
+#     data = fetch_data()
+#     fixtures = fetch_fixtures()
+#     team_lookup = {t['id']: t['name'] for t in data['teams']}
+#     players = [p for p in data['elements'] if p['element_type'] == code]
+#     players = enrich_players(players, data['teams'])
+
+#     filtered_players = []
+
+#     for p in players:
+#         minutes = p.get("minutes", 0)
+
+#         # ✅ Only include players with at least 270 minutes (3 full games)
+#         if minutes < 270:
+#             continue
+
+#         try:
+#             # Build input for prediction
+#             player_input = {
+#                 "minutes": minutes,
+#                 "goals_scored": p.get("goals_scored", 0),
+#                 "assists": p.get("assists", 0),
+#                 "clean_sheets": p.get("clean_sheets", 0),
+#                 "ict_index": float(p.get("ict_index", 0)),
+#                 "influence": float(p.get("influence", 0)),
+#                 "creativity": float(p.get("creativity", 0)),
+#                 "threat": float(p.get("threat", 0)),
+#                 "form": float(p.get("form", 0)),
+#                 "fixture_difficulty": 3,  # Placeholder for now
+#                 "opponent_strength": 3,  # Placeholder
+#                 "team_form": 3,          # Placeholder
+#                 "price": p.get("now_cost", 0) / 10,
+#                 "transfers_in_gw": p.get("transfers_in_event", 0),
+#                 "transfers_out_gw": p.get("transfers_out_event", 0),
+#                 "yellow_cards": p.get("yellow_cards", 0),
+#                 "red_cards": p.get("red_cards", 0),
+#                 "bonus": p.get("bonus", 0)
+#             }
+
+#             # 👇 Use your model
+#             predicted_score = get_prediction(player_input)
+
+#             # Add prediction info to player
+#             p["predicted_points"] = predicted_score
+#             p["predicted_points_per_90"] = (predicted_score * 90) / minutes
+#             filtered_players.append(p)
+
+#         except Exception as e:
+#             # 🛠️ Log the error
+#             print(f"❌ Prediction failed for {p.get('web_name', 'Unknown')}: {e}")
+#             continue
+
+
+
+#     return sorted(filtered_players, key=lambda x: x["predicted_points_per_90"], reverse=True)[:top_n]
+
+def enrich_player_with_prediction(player, fixtures, team_lookup):
+    try:
+        minutes = player.get("minutes", 0)
+        if minutes < 270:  # Require 3+ full matches for validity
+            return None
+
+        upcoming_fixtures = get_upcoming_fixtures(player["team"], fixtures, team_lookup, limit=3)
+
+        fixture_difficulty = np.mean([f[1] for f in upcoming_fixtures]) if upcoming_fixtures else 3
+        opponent_strength = upcoming_fixtures[0][1] if upcoming_fixtures else 3
+
+        player_input = {
+            "minutes": minutes,
+            "goals_scored": player.get("goals_scored", 0),
+            "assists": player.get("assists", 0),
+            "clean_sheets": player.get("clean_sheets", 0),
+            "ict_index": player.get("ict_index", 0.0),
+            "influence": player.get("influence", 0.0),
+            "creativity": player.get("creativity", 0.0),
+            "threat": player.get("threat", 0.0),
+            "form": float(player.get("form", 0.0)),
+            "fixture_difficulty": fixture_difficulty,
+            "opponent_strength": opponent_strength,
+            "team_form": float(player.get("form", 0.0)),  # Placeholder
+            "price": player.get("now_cost", 0) / 10.0,
+            "transfers_in_gw": player.get("transfers_in_event", 0),
+            "transfers_out_gw": player.get("transfers_out_event", 0),
+            "yellow_cards": player.get("yellow_cards", 0),
+            "red_cards": player.get("red_cards", 0),
+            "bonus": player.get("bonus", 0)
+        }
+
+        predicted_score = get_prediction(player_input)
+        player["predicted_points"] = predicted_score
+        player["predicted_points_per_90"] = round((predicted_score * 90) / minutes, 2)
+
+        player["fixture_info"] = ', '.join([f"vs {f[0]} (D{f[1]})" for f in upcoming_fixtures]) or "N/A"
+
+        return player
+    except Exception as e:
+        print(f"⚠️ Prediction failed for {player.get('web_name')}: {e}")
+        return None
+
+
 def get_top_picks_by_position(position_label, top_n=5):
     position_code = [k for k, v in POSITION_MAP.items() if v.lower() == position_label.lower()]
     if not position_code:
@@ -102,53 +207,70 @@ def get_top_picks_by_position(position_label, top_n=5):
     players = enrich_players(players, data['teams'])
 
     filtered_players = []
-
     for p in players:
-        minutes = p.get("minutes", 0)
-
-        # ✅ Only include players with at least 270 minutes (3 full games)
-        if minutes < 270:
-            continue
-
-        try:
-            # Build input for prediction
-            player_input = {
-                "minutes": minutes,
-                "goals_scored": p.get("goals_scored", 0),
-                "assists": p.get("assists", 0),
-                "clean_sheets": p.get("clean_sheets", 0),
-                "ict_index": float(p.get("ict_index", 0)),
-                "influence": float(p.get("influence", 0)),
-                "creativity": float(p.get("creativity", 0)),
-                "threat": float(p.get("threat", 0)),
-                "form": float(p.get("form", 0)),
-                "fixture_difficulty": 3,  # Placeholder for now
-                "opponent_strength": 3,  # Placeholder
-                "team_form": 3,          # Placeholder
-                "price": p.get("now_cost", 0) / 10,
-                "transfers_in_gw": p.get("transfers_in_event", 0),
-                "transfers_out_gw": p.get("transfers_out_event", 0),
-                "yellow_cards": p.get("yellow_cards", 0),
-                "red_cards": p.get("red_cards", 0),
-                "bonus": p.get("bonus", 0)
-            }
-
-            # 👇 Use your model
-            predicted_score = get_prediction(player_input)
-
-            # Add prediction info to player
-            p["predicted_points"] = predicted_score
-            p["predicted_points_per_90"] = (predicted_score * 90) / minutes
-            filtered_players.append(p)
-
-        except Exception as e:
-            # 🛠️ Log the error
-            print(f"❌ Prediction failed for {p.get('web_name', 'Unknown')}: {e}")
-            continue
+        print(f"{p['web_name']}: Predicted Points = {p.get('predicted_points')}, Per 90 = {p.get('predicted_points_per_90')}, Minutes = {p.get('minutes')}")
+        enriched = enrich_player_with_prediction(p, fixtures, team_lookup)
+        if enriched:
+            filtered_players.append(enriched)
 
 
+    # filtered_players = []
+    # for p in players:
+    #     minutes = p.get("minutes", 0)
 
+    #     # Skip low-minute players entirely
+    #     if minutes < 270:
+    #         continue
+
+    #     try:
+    #         player_input = {
+    #             "minutes": minutes,
+    #             "goals_scored": p.get("goals_scored", 0),
+    #             "assists": p.get("assists", 0),
+    #             "clean_sheets": p.get("clean_sheets", 0),
+    #             "ict_index": float(p.get("ict_index") or 0),
+    #             "influence": float(p.get("influence") or 0),
+    #             "creativity": float(p.get("creativity") or 0),
+    #             "threat": float(p.get("threat") or 0),
+    #             "form": float(p.get("form") or 0),
+    #             "fixture_difficulty": 3,
+    #             "opponent_strength": 3,
+    #             "team_form": 3,
+    #             "price": p.get("now_cost", 0) / 10,
+    #             "transfers_in_gw": p.get("transfers_in_event", 0),
+    #             "transfers_out_gw": p.get("transfers_out_event", 0),
+    #             "yellow_cards": p.get("yellow_cards", 0),
+    #             "red_cards": p.get("red_cards", 0),
+    #             "bonus": p.get("bonus", 0)
+    #         }
+
+    #         predicted_score = get_prediction(player_input)
+
+    #         # Optional: weight the score
+    #         weighted_score = (
+    #             predicted_score * 1.5 +
+    #             float(p.get("form", 0)) * 1.2 +
+    #             float(p.get("total_points", 0)) * 0.8
+    #         )
+
+    #         p["predicted_points"] = round(predicted_score, 2)
+    #         p["weighted_score"] = round(weighted_score, 2)
+    #         filtered_players.append(p)
+
+    #         # 🔍 Debug top 3 predictions
+    #         for p in sorted(filtered_players, key=lambda x: x["weighted_score"], reverse=True)[:3]:
+    #             print(f"{p.get('web_name')} | Minutes: {p.get('minutes')} | Predicted: {p.get('predicted_points')} | Weighted: {p.get('weighted_score')}")
+
+
+    #     except Exception as e:
+    #         print(f"❌ Error predicting for {p.get('web_name', 'unknown')}: {e}")
+    #         continue
+
+    # return sorted(filtered_players, key=lambda x: x["weighted_score"], reverse=True)[:top_n]
+    # return sorted(filtered_players, key=lambda x: x.get("predicted_points_per_90", 0), reverse=True)[:top_n]
+    # return sorted(filtered_players, key=lambda x: x.get("predicted_points", 0), reverse=True)[:top_n]
     return sorted(filtered_players, key=lambda x: x["predicted_points_per_90"], reverse=True)[:top_n]
+
 
 
 def get_captain_picks(top_n=3):
@@ -198,9 +320,89 @@ def get_top_managers():
 #     else:
 #         raise Exception(f"API Error {response.status_code}: {response.text}")
 
-def get_prediction(player_features: dict) -> float:
+# def get_prediction(player_features: dict) -> float:
 
-    # Ensure required features are present
+#     # Ensure required features are present
+#     expected_features = [
+#         "minutes", "goals_scored", "assists", "clean_sheets",
+#         "ict_index", "influence", "creativity", "threat",
+#         "form", "fixture_difficulty", "opponent_strength", "team_form",
+#         "price", "transfers_in_gw", "transfers_out_gw",
+#         "yellow_cards", "red_cards", "bonus"
+#     ]
+
+#     # Fill missing with 0s if any
+#     input_data = {f: player_features.get(f, 0) for f in expected_features}
+
+#     df = pd.DataFrame([input_data])
+#     prediction = model.predict(df)[0]
+#     return prediction
+
+# def get_prediction(player_features: dict) -> float:
+#     expected_features = [
+#         "minutes", "goals_scored", "assists", "clean_sheets",
+#         "ict_index", "influence", "creativity", "threat",
+#         "form", "fixture_difficulty", "opponent_strength", "team_form",
+#         "price", "transfers_in_gw", "transfers_out_gw",
+#         "yellow_cards", "red_cards", "bonus"
+#     ]
+
+#     # Build the input with safe defaults
+#     input_data = {f: player_features.get(f, 0) for f in expected_features}
+
+#     try:
+#         # Convert to DataFrame and ensure proper types
+#         df = pd.DataFrame([input_data])
+#         df = df.astype(float)  # Force numeric types
+#         prediction = model.predict(df)[0]
+#         return prediction
+#     except Exception as e:
+#         print(f"[Prediction ERROR] Input: {input_data}")
+#         print(f"[Prediction ERROR] Exception: {e}")
+#         return None
+
+# def get_prediction(player_features: dict) -> float:
+#     # Features used in the trained model
+#     expected_features = [
+#         "minutes", "goals_scored", "assists", "clean_sheets",
+#         "ict_index", "influence", "creativity", "threat",
+#         "form", "fixture_difficulty", "opponent_strength", "team_form",
+#         "now_cost", "transfers_in_event", "transfers_out_event",
+#         "yellow_cards", "red_cards", "bonus"
+#     ]
+
+#     # Build input using real values or fallback to 0
+#     input_data = {f: player_features.get(f, 0) for f in expected_features}
+
+#     # Optional debug output
+#     print("Prediction input:", input_data)
+
+#     # Convert to DataFrame for model
+#     df = pd.DataFrame([input_data])
+
+#     try:
+#         prediction = model.predict(df)[0]
+#         return prediction
+#     except Exception as e:
+#         print(f"Prediction error: {e}")
+#         return None
+
+# def get_prediction(player_features: dict) -> float:
+#     expected_features = [
+#         "minutes", "goals_scored", "assists", "clean_sheets",
+#         "ict_index", "influence", "creativity", "threat",
+#         "form", "fixture_difficulty", "opponent_strength", "team_form",
+#         "price", "transfers_in_gw", "transfers_out_gw",
+#         "yellow_cards", "red_cards", "bonus"
+#     ]
+
+#     # Create a DataFrame using only expected features
+#     clean_features = {key: player_features[key] for key in expected_features if key in player_features}
+#     df = pd.DataFrame([clean_features])
+
+#     return model.predict(df)[0]
+
+def get_prediction(player_features: dict) -> float:
     expected_features = [
         "minutes", "goals_scored", "assists", "clean_sheets",
         "ict_index", "influence", "creativity", "threat",
@@ -209,9 +411,34 @@ def get_prediction(player_features: dict) -> float:
         "yellow_cards", "red_cards", "bonus"
     ]
 
-    # Fill missing with 0s if any
-    input_data = {f: player_features.get(f, 0) for f in expected_features}
+    try:
+        # Ensure all features exist
+        input_data = {}
+        for f in expected_features:
+            val = player_features.get(f, 0)
 
-    df = pd.DataFrame([input_data])
-    prediction = model.predict(df)[0]
-    return prediction
+            # Convert strings to float if necessary
+            if isinstance(val, str):
+                try:
+                    val = float(val)
+                except ValueError:
+                    print(f"⚠️ Cannot convert feature '{f}' with value '{val}' to float")
+                    val = 0
+
+            input_data[f] = val
+
+        df = pd.DataFrame([input_data])
+
+        prediction = model.predict(df)[0]
+
+        return prediction
+
+    except Exception as e:
+        print(f"Prediction error for input {player_features.get('web_name', 'Unknown')}: {e}")
+        return None
+
+
+
+
+
+
