@@ -60,6 +60,7 @@ def format_player(p):
         f"Points: `{p.get('total_points', 0)}` – "
         f"Score: `{p['smart_score']}` – "
         f"Min: `{p.get('minutes', 0)}` – "
+        f"Goals: `{p.get('goals_scored', 0)}` – "
         f"Play Chance: `{p.get('chance_of_playing_next_round', '100')}%`"
     )
 
@@ -72,6 +73,7 @@ def format_player_detailed(p):
     chance = p.get('chance_of_playing_next_round', 100)
     smart_score = p.get('smart_score', 0)
     fixtures = p.get('fixture_info', '')
+    goals_scored = p.get('goals', 0)
 
     # Fixtures as emoji string (🟢 Easy, 🟡 Medium, 🔴 Hard)
     emoji_difficulty = ''

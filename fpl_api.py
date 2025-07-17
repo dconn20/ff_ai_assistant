@@ -2,10 +2,10 @@ import requests
 from collections import defaultdict
 import pandas as pd
 import numpy as np
+
 import joblib
-
-
 model = joblib.load("gw_score_model.pkl")
+
 
 POSITION_MAP = {
     1: "Goalkeeper",
@@ -405,37 +405,29 @@ def get_top_managers():
 def get_prediction(player_features: dict) -> float:
     expected_features = [
         "minutes", "goals_scored", "assists", "clean_sheets",
-        "ict_index", "influence", "creativity", "threat",
-        "form", "fixture_difficulty", "opponent_strength", "team_form",
-        "price", "transfers_in_gw", "transfers_out_gw",
-        "yellow_cards", "red_cards", "bonus"
+        "ict_index", "influence", "creativity", "threat", "form"
     ]
 
     try:
-        # Ensure all features exist
         input_data = {}
         for f in expected_features:
             val = player_features.get(f, 0)
-
-            # Convert strings to float if necessary
             if isinstance(val, str):
                 try:
                     val = float(val)
                 except ValueError:
                     print(f"⚠️ Cannot convert feature '{f}' with value '{val}' to float")
                     val = 0
-
             input_data[f] = val
 
         df = pd.DataFrame([input_data])
-
         prediction = model.predict(df)[0]
-
         return prediction
 
     except Exception as e:
         print(f"Prediction error for input {player_features.get('web_name', 'Unknown')}: {e}")
         return None
+
 
 
 
